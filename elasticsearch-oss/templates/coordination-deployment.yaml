@@ -1,0 +1,122 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ template "elasticsearch.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    component: "{{ .Values.coordination.name }}"
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  name: {{ template "elasticsearch.coordination.fullname" . }}
+spec:
+  replicas: {{ .Values.coordination.replicas }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "elasticsearch.name" . }}
+        component: "{{ .Values.coordination.name }}"
+        release: {{ .Release.Name }}
+        {{- if .Values.coordination.podAnnotations }}
+      annotations:
+{{ toYaml .Values.coordination.podAnnotations | indent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ template "elasticsearch.fullname" . }}
+      {{- if eq .Values.coordination.antiAffinity "hard" }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app: "{{ template "elasticsearch.name" . }}"
+                  release: "{{ .Release.Name }}"
+                  component: "{{ .Values.coordination.name }}"
+      {{- else if eq .Values.coordination.antiAffinity "soft" }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app: "{{ template "elasticsearch.name" . }}"
+                  release: "{{ .Release.Name }}"
+                  component: "{{ .Values.coordination.name }}"
+      {{- end }}
+      initContainers:
+      # see https://www.elastic.co/guide/en/elasticsearch/reference/current/vm-max-map-count.html
+      # and https://www.elastic.co/guide/en/elasticsearch/reference/current/setup-configuration-memory.html#mlockall
+      - name: "sysctl"
+        image: "busybox"
+        imagePullPolicy: "Always"
+        command: ["sysctl", "-w", "vm.max_map_count=262144"]
+        securityContext:
+          privileged: true
+      containers:
+      - name: elasticsearch
+        env:
+        - name: SERVICE
+          value: {{ template "elasticsearch.master.fullname" . }}
+        - name: KUBERNETES_MASTER
+          value: kubernetes.default.svc.cluster.local
+        - name: KUBERNETES_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: NODE_DATA
+          value: "false"
+{{- if hasPrefix "6." .Values.appVersion }}
+        - name: NODE_INGEST
+          value: "false"
+{{- end }}
+        - name: NODE_MASTER
+          value: "false"
+        - name: PROCESSORS
+          valueFrom:
+            resourceFieldRef:
+              resource: limits.cpu
+        - name: ES_JAVA_OPTS
+          value: "-Djava.net.preferIPv4Stack=true -Xms{{ .Values.coordination.heapSize }} -Xmx{{ .Values.coordination.heapSize }}"
+        {{- range $key, $value :=  .Values.cluster.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        resources:
+{{ toYaml .Values.coordination.resources | indent 12 }}
+        readinessProbe:
+          httpGet:
+            path: /_cluster/health?wait_for_status=yellow
+            port: 9200
+          initialDelaySeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /_cluster/health?wait_for_status=yellow
+            port: 9200
+          initialDelaySeconds: 90
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+        ports:
+        - containerPort: 9200
+          name: http
+        - containerPort: 9300
+          name: transport
+        volumeMounts:
+        - mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+          name: config
+          subPath: elasticsearch.yml
+{{- if hasPrefix "2." .Values.image.tag }}
+        - mountPath: /usr/share/elasticsearch/config/logging.yml
+          name: config
+          subPath: logging.yml
+{{- end }}
+{{- if hasPrefix "6." .Values.image.tag }}
+        - mountPath: /usr/share/elasticsearch/config/log4j2.properties
+          name: config
+          subPath: log4j2.properties
+{{- end }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ template "elasticsearch.fullname" . }}

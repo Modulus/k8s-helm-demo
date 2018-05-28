@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: {{ template "elasticsearch.name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    component: "{{ .Values.coordination.name }}"
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  name: {{ template "elasticsearch.coordination.fullname" . }}
+{{- if .Values.coordination.serviceAnnotations }}
+  annotations:
+{{ toYaml .Values.coordination.serviceAnnotations | indent 4 }}
+{{- end }}
+
+spec:
+  ports:
+    - name: http
+      port: 9200
+      targetPort: http
+    - name: transport
+      port: 9300
+      targetPort: transport
+  selector:
+    app: {{ template "elasticsearch.name" . }}
+    component: "{{ .Values.coordination.name }}"
+    release: {{ .Release.Name }}
+  type: {{ .Values.coordination.serviceType }}
