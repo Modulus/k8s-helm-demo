@@ -20,12 +20,6 @@ data:
 
     network.host: 0.0.0.0
 
-    # TODO: Check this on aws
-    #cloud:
-    #  kubernetes:
-    #    service: ${SERVICE}
-    #    namespace: ${KUBERNETES_NAMESPACE}
-
 {{- if hasPrefix "2." .Values.appVersion }}
     # see https://github.com/kubernetes/kubernetes/issues/3595
     bootstrap.mlockall: ${BOOTSTRAP_MLOCKALL:false}
@@ -34,7 +28,9 @@ data:
       #type: kubernetes
       zen:
         ping.unicast.hosts:
-          - elastic-elasticsearch-oss-master.tv2asa.no
+          {{- range  $i  := until (int .Values.master.replicas)  }}
+          - {{ $.Release.Name}}-elasticsearch-oss-master-{{.}}.elastic-elasticsearch-oss-master.{{ $.Release.Namespace }}.svc.cluster.local
+          {{- end }}
         minimum_master_nodes: ${MINIMUM_MASTER_NODES:2}
 {{- end }}
 
@@ -42,14 +38,13 @@ data:
     # see https://github.com/kubernetes/kubernetes/issues/3595
     bootstrap.memory_lock: ${BOOTSTRAP_MEMORY_LOCK:false}
 
-    # TODO: Make loop
     discovery:
       zen:
         #hosts_provider: kubernetes
         ping.unicast.hosts:
-          - elastic-elasticsearch-oss-master-0.elastic-elasticsearch-oss-master.default.svc.cluster.local
-          - elastic-elasticsearch-oss-master-1.elastic-elasticsearch-oss-master.default.svc.cluster.local
-          - elastic-elasticsearch-oss-master-2.elastic-elasticsearch-oss-master.default.svc.cluster.local
+          {{- range  $i  := until (int .Values.master.replicas)  }}
+          - {{ $.Release.Name}}-elasticsearch-oss-master-{{.}}.elastic-elasticsearch-oss-master.{{ $.Release.Namespace }}.svc.cluster.local
+          {{- end }}
         minimum_master_nodes: ${MINIMUM_MASTER_NODES:2}
 {{- end }}
 
