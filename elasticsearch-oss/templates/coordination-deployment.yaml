@@ -89,7 +89,7 @@ spec:
           httpGet:
             path: /_cluster/health?wait_for_status=yellow
             port: 9200
-          initialDelaySeconds: 5
+          initialDelaySeconds: 25
         livenessProbe:
           httpGet:
             path: /_cluster/health?wait_for_status=yellow
